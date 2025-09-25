@@ -82,58 +82,46 @@ def get_embedder(model_name="firqaaa/indo-sentence-bert-base"):
     return SentenceTransformer(model_name)
 
 # 5. Store ke Qdrant
-def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, batch_size=50,force_recreate=True):
+def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, batch_size=50):
     print("\n[5] Menyimpan embedding ke Qdrant...")
-    client = QdrantClient(
-        url=qdrant_url,
-        api_key=api_key,
-        timeout=30
-    )
 
- # Hapus koleksi lama jika ada (HANYA UNTUK DEVELOPMENT!)
-    if force_recreate:
-        try:
-            client.get_collection(collection_name)
-            print(f"Menghapus koleksi lama: {collection_name}")
-            client.delete_collection(collection_name)
-        except Exception:
-            pass
+    client = QdrantClient(url=qdrant_url, api_key=api_key, timeout=30)
 
-        client.create_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(size=len(embeddings[0]), distance=Distance.COSINE)
+    # === HAPUS COLLECTION LAMA (HANYA UNTUK DEVELOPMENT) ===
+    try:
+        client.get_collection(collection_name)
+        print(f"Collection '{collection_name}' ditemukan. Menghapus...")
+        client.delete_collection(collection_name)
+    except Exception:
+        print(f"Collection '{collection_name}' tidak ada. Akan dibuat baru.")
+
+    # === BUAT COLLECTION BARU ===
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(
+            size=len(embeddings[0]),
+            distance=Distance.COSINE
         )
-        print(f"Collection '{collection_name}' dibuat dengan dimensi: {len(embeddings[0])}")
-    else:
-        # Cek & buat hanya jika belum ada (untuk production)
-        try:
-            client.get_collection(collection_name)
-        except Exception:
-            client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=len(embeddings[0]), distance=Distance.COSINE)
-            )
+    )
+    print(f"Collection '{collection_name}' berhasil dibuat dengan dimensi: {len(embeddings[0])}")
 
-
-    # Batch insert
+    # === SIMPAN DATA (BATCH) ===
     total = len(chunks)
     for i in range(0, total, batch_size):
         batch_chunks = chunks[i:i + batch_size]
         batch_embeddings = embeddings[i:i + batch_size]
-        
         points = [
             PointStruct(
                 id=str(uuid.uuid4()),
-                vector=embedding.tolist(),  # ← Tambahkan .tolist() untuk keamanan
+                vector=embedding.tolist(),
                 payload={"text": chunk},
             )
             for chunk, embedding in zip(batch_chunks, batch_embeddings)
         ]
-
         client.upsert(collection_name=collection_name, points=points)
-        print(f" Batch {i//batch_size + 1}: sukses simpan {len(points)} chunks")
+        print(f" Batch {i//batch_size + 1}: simpan {len(points)} chunks")
 
-    print(f"Sukses simpan {total} chunks ke collection '{collection_name}'")
+    print(f" Sukses simpan {total} chunks ke collection '{collection_name}'")
     return client
 
 # 6. Improved Similarity Search dengan preprocessing
