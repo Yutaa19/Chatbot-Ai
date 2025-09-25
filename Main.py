@@ -91,22 +91,28 @@ def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, ba
     )
 
  # Hapus koleksi lama jika ada (HANYA UNTUK DEVELOPMENT!)
-try:
-    client.get_collection(collection_name)
-    print(f"Menghapus koleksi lama: {collection_name}")
-    client.delete_collection(collection_name)
-except Exception:
-    pass  # Tidak ada collection lama, lanjut saja
+    if force_recreate:
+        try:
+            client.get_collection(collection_name)
+            print(f"Menghapus koleksi lama: {collection_name}")
+            client.delete_collection(collection_name)
+        except Exception:
+            pass
 
-# Buat koleksi baru dengan dimensi sesuai
-client.create_collection(
-    collection_name=collection_name,
-    vectors_config=VectorParams(
-        size=len(embeddings[0]),  # Dinamis, sesuai model saat ini
-        distance=Distance.COSINE,
-    ),
-)
-print(f"Collection '{collection_name}' dibuat dengan dimensi: {len(embeddings[0])}")
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(size=len(embeddings[0]), distance=Distance.COSINE)
+        )
+        print(f"Collection '{collection_name}' dibuat dengan dimensi: {len(embeddings[0])}")
+    else:
+        # Cek & buat hanya jika belum ada (untuk production)
+        try:
+            client.get_collection(collection_name)
+        except Exception:
+            client.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=len(embeddings[0]), distance=Distance.COSINE)
+            )
 
 
     # Batch insert
