@@ -90,25 +90,21 @@ def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, ba
         timeout=30
     )
 
-# Cek apakah collection sudah ada
-    try:
-        client.get_collection(collection_name)
-        collection_exists = True
-        print(f"Collection '{collection_name}' sudah ada.")
-    except Exception:
-        collection_exists = False
-        print(f"Collection '{collection_name}' belum ada, akan dibuat...")
+  # Hapus koleksi lama jika ada (HANYA UNTUK DEVELOPMENT!)
+    if client.collection_exists(collection_name=collection_name):
+        print(f"Menghapus koleksi lama: {collection_name}")
+        client.delete_collection(collection_name=collection_name)
 
-    # HANYA buat jika belum ada
-    if not collection_exists:
-        client.create_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(
-                size=len(embeddings[0]),
-                distance=Distance.COSINE
-            )
-        )
-        print(f" Collection '{collection_name}' berhasil dibuat!")
+    # Buat koleksi baru dengan dimensi sesuai
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(
+            size=len(embeddings[0]),  # ← Dinamis, sesuai model saat ini
+            distance=Distance.COSINE,
+        ),
+    )
+    print(f"Collection '{collection_name}' dibuat dengan dimensi: {len(embeddings[0])}")
+
 
     # Batch insert
     total = len(chunks)
