@@ -82,7 +82,7 @@ def get_embedder(model_name="firqaaa/indo-sentence-bert-base"):
     return SentenceTransformer(model_name)
 
 # 5. Store ke Qdrant
-def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, batch_size=50):
+def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, batch_size=50,force_recreate=True):
     print("\n[5] Menyimpan embedding ke Qdrant...")
     client = QdrantClient(
         url=qdrant_url,
