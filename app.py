@@ -40,11 +40,11 @@ urls_list = [
     "https://www.uinsalatiga.ac.id/tenaga-pendidik/",
     "https://www.uinsalatiga.ac.id/tenaga-kependidikan/",
 ]
-QDRANT_URL = os.getenv('QDRANT_URL', "https://fef232a5-ad33-47e2-b0ce-a374a9a13f15.europe-west3-0.gcp.cloud.qdrant.io:6333")
-QDRANT_API_KEY = os.getenv('QDRANT_API_KEY', "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.SMKtT2_FbPb5DE1GlDP7Q9xC6MA0w77rWZrZHbxEK4s")
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', "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")
-OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', "x-ai/grok-4-fast:free")
-COLLECTION_NAME = os.getenv('COLLECTION_NAME', "my_pdf_collection")
+QDRANT_URL = os.getenv('QDRANT_URL')
+QDRANT_API_KEY = os.getenv('QDRANT_API_KEY')
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL')
+COLLECTION_NAME = os.getenv('COLLECTION_NAME')
 
 # --- Inisialisasi Global ---
 client = None
