@@ -4,7 +4,7 @@ from pathlib import Path
 from llama_index.readers.file import PDFReader
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-from qdrant_client.http import models
+from qdrant_client.models import VectorParams, Distance, PointStruct
 import requests
 import json
 from dotenv import load_dotenv
@@ -82,8 +82,6 @@ def get_embedder(model_name="firqaaa/indo-sentence-bert-base"):
     return SentenceTransformer(model_name)
 
 # 5. Store ke Qdrant
-from qdrant_client.http import models
-
 def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, batch_size=50):
     print("\n[5] Menyimpan embedding ke Qdrant...")
     client = QdrantClient(
@@ -114,7 +112,7 @@ def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, ba
         batch_embeddings = embeddings[i:i + batch_size]
         
         points = [
-            models.PointStruct(
+            PointStruct(
                 id=str(uuid.uuid4()),
                 vector=embedding.tolist(),  # ← Tambahkan .tolist() untuk keamanan
                 payload={"text": chunk},
