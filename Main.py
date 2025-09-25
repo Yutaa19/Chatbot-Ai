@@ -269,7 +269,8 @@ def ask_openrouter(system_prompt, user_prompt, api_key, model_name):
         return "Maaf, terjadi kesalahan saat menghubungi LLM."
 
 # MAIN PIPELINE
-if __name__ == "__main__":
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
     # --- konfigurasi ---
     PDF_FILE = "sejarah_uin.pdf"
 
