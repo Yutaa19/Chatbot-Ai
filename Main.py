@@ -87,25 +87,17 @@ def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, ba
 
     client = QdrantClient(url=qdrant_url, api_key=api_key, timeout=30)
 
-    # === HAPUS COLLECTION LAMA (HANYA UNTUK DEVELOPMENT) ===
-    try:
-        client.get_collection(collection_name)
-        print(f"Collection '{collection_name}' ditemukan. Menghapus...")
-        client.delete_collection(collection_name)
-    except Exception:
-        print(f"Collection '{collection_name}' tidak ada. Akan dibuat baru.")
-
-    # === BUAT COLLECTION BARU ===
-    client.create_collection(
+    # === RECREATE COLLECTION (HAPUS + BUAT BARU DALAM 1 LANGKAH) ===
+    client.recreate_collection(
         collection_name=collection_name,
         vectors_config=VectorParams(
             size=len(embeddings[0]),
             distance=Distance.COSINE
         )
     )
-    print(f"Collection '{collection_name}' berhasil dibuat dengan dimensi: {len(embeddings[0])}")
+    print(f"Collection '{collection_name}' berhasil dibuat/diganti dengan dimensi: {len(embeddings[0])}")
 
-    # === SIMPAN DATA (BATCH) ===
+    # === SIMPAN DATA ===
     total = len(chunks)
     for i in range(0, total, batch_size):
         batch_chunks = chunks[i:i + batch_size]
@@ -121,7 +113,7 @@ def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, ba
         client.upsert(collection_name=collection_name, points=points)
         print(f" Batch {i//batch_size + 1}: simpan {len(points)} chunks")
 
-    print(f" Sukses simpan {total} chunks ke collection '{collection_name}'")
+    print(f"Sukses simpan {total} chunks ke collection '{collection_name}'")
     return client
 
 # 6. Improved Similarity Search dengan preprocessing
