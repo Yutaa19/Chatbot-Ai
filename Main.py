@@ -5,6 +5,7 @@ from llama_index.readers.file import PDFReader
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
+import google.generativeai as genai
 import requests
 import json
 from dotenv import load_dotenv
@@ -237,35 +238,27 @@ Jawablah dengan gaya seorang CS.
     return system_prompt, user_prompt
 
 
-# Ganti dengan fungsi ini:
-def ask_openrouter(system_prompt, user_prompt, api_key, model_name):
-    print(f"\n[8] Mengirim prompt ke {model_name} (via OpenRouter)...")
+
+
+def ask_gemini(system_prompt, user_prompt, api_key, model_name="gemini-1.5-flash-latest"):
+    print(f"\n[8] Mengirim prompt ke {model_name} (via Google AI Studio)...")
     
-    # Gunakan format JSON yang benar untuk OpenRouter API
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-
-    response = requests.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        },
-        data=json.dumps({
-            "model": model_name,
-            "messages": messages,
-        })
-    )
-
-    # Tangani respons dari API
-    if response.status_code == 200:
-        answer = response.json()["choices"][0]["message"]["content"]
-        print("Jawaban diterima dari OpenRouter.")
-        return answer
-    else:
-        print(f"Error: {response.status_code}, {response.text}")
+    # Konfigurasi API key
+    genai.configure(api_key=api_key)
+    
+    # Buat instance model
+    model = genai.GenerativeModel(model_name)
+    
+    # Gabungkan system prompt + user prompt
+    # Catatan: Gemini tidak punya "system role" eksplisit → disisipkan di awal user prompt
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+    
+    try:
+        response = model.generate_content(full_prompt)
+        print("Jawaban diterima dari Google Gemini.")
+        return response.text
+    except Exception as e:
+        print(f"Error saat menghubungi Gemini: {e}")
         return "Maaf, terjadi kesalahan saat menghubungi LLM."
 
 # MAIN PIPELINE
@@ -295,8 +288,8 @@ if __name__ == '__main__':
     QDRANT_URL = os.getenv("QDRANT_URL")
     QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
     COLLECTION_NAME = os.getenv("COLLECTION_NAME")
-    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-    OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL")
+    OPENROUTER_API_KEY = os.getenv("GEMINI_API_KEY")
+    OPENROUTER_MODEL = os.getenv("GEMINI_MODEL")
     
     
 
@@ -347,11 +340,11 @@ if __name__ == '__main__':
         # construct prompt
         system_prompt, user_prompt = construct_prompt(user_query, retrieved)
 
-        answer = ask_openrouter(
+        answer = ask_gemini(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        api_key=OPENROUTER_API_KEY,
-        model_name=OPENROUTER_MODEL
+        api_key=GEMINI_API_KEY,
+        model_name=GEMINI_MODEL
         )
         print("\n=== Jawaban CS ===")
         print(answer)
