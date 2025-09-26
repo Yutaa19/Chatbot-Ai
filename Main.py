@@ -288,8 +288,8 @@ if __name__ == '__main__':
     QDRANT_URL = os.getenv("QDRANT_URL")
     QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
     COLLECTION_NAME = os.getenv("COLLECTION_NAME")
-    OPENROUTER_API_KEY = os.getenv("GEMINI_API_KEY")
-    OPENROUTER_MODEL = os.getenv("GEMINI_MODEL")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL")
     
     
 
