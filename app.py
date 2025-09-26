@@ -16,7 +16,7 @@ from Main import (
     store_to_qdrant,
     search_qdrant,
     construct_prompt,
-    ask_openrouter
+    ask_gemini
 )
 
 
@@ -42,8 +42,8 @@ urls_list = [
 ]
 QDRANT_URL = os.getenv('QDRANT_URL')
 QDRANT_API_KEY = os.getenv('QDRANT_API_KEY')
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
-OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL')
 COLLECTION_NAME = os.getenv('COLLECTION_NAME')
 
 # --- Inisialisasi Global ---
@@ -116,11 +116,11 @@ def ask():
         system_prompt, user_prompt = construct_prompt(user_query, retrieved)
 
         # 8. Tanya LLM via OpenRouter
-        answer = ask_openrouter(
+        answer = ask_gemini(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            api_key=OPENROUTER_API_KEY,
-            model_name=OPENROUTER_MODEL
+            api_key=GEMINI_API_KEY,
+            model_name=GEMINI_MODEL
         )
 
         # Kembalikan jawaban + konteks (untuk debugging/frontend)
