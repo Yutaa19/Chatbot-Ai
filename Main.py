@@ -134,13 +134,13 @@ def search_qdrant(query, client, collection_name, embedder, top_k=5):
         collection_name=collection_name,
         query_vector=query_embedding,
         limit=top_k * 2,
-        whith_vektors = True # Ambil lebih banyak untuk filtering
+        with_vectors =True
     )
     
     # Step 4: Reranking berdasarkan cosine similarity yang lebih akurat
     if results:
         # Hitung ulang similarity untuk reranking
-        vektor_qdrant = [hit.vektor for hit in results]
+        vektor_qdrant = [hit.vector for hit in results]
         
         # Hitung cosine similarity
         similarities = cosine_similarity([query_embedding], vektor_qdrant)[0]
