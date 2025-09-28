@@ -133,17 +133,17 @@ def search_qdrant(query, client, collection_name, embedder, top_k=5):
     results = client.search(
         collection_name=collection_name,
         query_vector=query_embedding,
-        limit=top_k * 2,  # Ambil lebih banyak untuk filtering
+        limit=top_k * 2,
+        whith_vektor = True # Ambil lebih banyak untuk filtering
     )
     
     # Step 4: Reranking berdasarkan cosine similarity yang lebih akurat
     if results:
         # Hitung ulang similarity untuk reranking
-        chunk_texts = [hit.payload["text"] for hit in results]
-        chunk_embeddings = embedder.encode(chunk_texts)
+        vektor_qdrant = [hit.vektor for hit in results]
         
         # Hitung cosine similarity
-        similarities = cosine_similarity([query_embedding], chunk_embeddings)[0]
+        similarities = cosine_similarity([query_embedding], vektor_qdrant)[0]
         
         # Reranking berdasarkan similarity score
         reranked_results = []
