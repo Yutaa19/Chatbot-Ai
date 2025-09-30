@@ -36,19 +36,17 @@ def extract_text_from_pdf_llamaindex(pdf_path):
 
 # 1.1 Ekstraksi dari Web
 def extract_text_from_web_async(urls):
-    from llama_index.readers.web import TrafilaturaWebReader
-    """
-    Mengekstrak teks dari daftar URL secara async menggunakan TrafilaturaWebReader.
-    """
-    print(f"\n[1.1] Ekstraksi dari {len(urls)} URL (async)...")
-    
     reader = TrafilaturaWebReader()
-    documents = reader.load_data(urls=urls)  # Mendukung async secara internal
-    
-    full_text = "\n".join([doc.text for doc in documents])
-    
-    print("Ekstraksi web selesai.")
-    return full_text
+    all_texts = []
+    for url in urls:
+        clean_url = url.strip()
+        if not clean_url:
+            continue
+        docs = reader.load_data(urls=[clean_url])
+        text = "\n".join([doc.text for doc in docs])
+        # Tambahkan penanda sumber
+        all_texts.append(f"=== SUMBER: {clean_url} ===\n{text}")
+    return "\n\n".join(all_texts)
 
 def clean_text(raw_text):
     print("\n[2] Cleansing text...")
