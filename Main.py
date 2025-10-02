@@ -2,7 +2,7 @@ import uuid
 import re
 from pathlib import Path
 from llama_index.readers.file import PDFReader
-from trafilatura_web_reader import TrafilaturaWebReader
+from llama_index.readers.web import TrafilaturaWebReader
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
