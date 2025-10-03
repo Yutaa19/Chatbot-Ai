@@ -2,14 +2,9 @@ import uuid
 import re
 from pathlib import Path
 from llama_index.readers.file import PDFReader
-from llama_index.readers.web import TrafilaturaWebReader
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-<<<<<<< HEAD
 from qdrant_client.http import models
-=======
-from qdrant_client.models import VectorParams, Distance, PointStruct
->>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
 import google.generativeai as genai
 import requests
 import json
@@ -18,9 +13,6 @@ import os
 
 # Muat variabel lingkungan dari .env
 load_dotenv()
-
-KAMPUS_API_BASE = os.getenv("KAMPUS_API_BASE", "https://api.uinsalatiga.ac.id/v1")
-KAMPUS_API_KEY = os.getenv("KAMPUS_API_KEY")  # Simpan di .env!
 
 # 1. Ekstraksi PDF
 def extract_text_from_pdf_llamaindex(pdf_path):
@@ -43,17 +35,19 @@ def extract_text_from_pdf_llamaindex(pdf_path):
 
 # 1.1 Ekstraksi dari Web
 def extract_text_from_web_async(urls):
+    from llama_index.readers.web import TrafilaturaWebReader
+    """
+    Mengekstrak teks dari daftar URL secara async menggunakan TrafilaturaWebReader.
+    """
+    print(f"\n[1.1] Ekstraksi dari {len(urls)} URL (async)...")
+    
     reader = TrafilaturaWebReader()
-    all_texts = []
-    for url in urls:
-        clean_url = url.strip()
-        if not clean_url:
-            continue
-        docs = reader.load_data(urls=[clean_url])
-        text = "\n".join([doc.text for doc in docs])
-        # Tambahkan penanda sumber
-        all_texts.append(f"=== SUMBER: {clean_url} ===\n{text}")
-    return "\n\n".join(all_texts)
+    documents = reader.load_data(urls=urls)  # Mendukung async secara internal
+    
+    full_text = "\n".join([doc.text for doc in documents])
+    
+    print("Ekstraksi web selesai.")
+    return full_text
 
 def clean_text(raw_text):
     print("\n[2] Cleansing text...")
@@ -88,172 +82,51 @@ def get_embedder(model_name="firqaaa/indo-sentence-bert-base"):
     return SentenceTransformer(model_name)
 
 # 5. Store ke Qdrant
+from qdrant_client.http import models
+
 def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, batch_size=50):
     print("\n[5] Menyimpan embedding ke Qdrant...")
-
-    client = QdrantClient(url=qdrant_url, api_key=api_key, timeout=30)
-
-    # === RECREATE COLLECTION (HAPUS + BUAT BARU DALAM 1 LANGKAH) ===
-    client.recreate_collection(
-        collection_name=collection_name,
-        vectors_config=VectorParams(
-            size=len(embeddings[0]),
-            distance=Distance.COSINE
-        )
+    client = QdrantClient(
+        url=qdrant_url,
+        api_key=api_key,
+        timeout=30
     )
-    print(f"Collection '{collection_name}' berhasil dibuat/diganti dengan dimensi: {len(embeddings[0])}")
 
-    # === SIMPAN DATA ===
+    # Hapus koleksi lama jika ada (HANYA UNTUK DEVELOPMENT!)
+    if client.collection_exists(collection_name=collection_name):
+        print(f"Menghapus koleksi lama: {collection_name}")
+        client.delete_collection(collection_name=collection_name)
+
+    # Buat koleksi baru dengan dimensi sesuai
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config=models.VectorParams(
+            size=len(embeddings[0]),  # ← Dinamis, sesuai model saat ini
+            distance=models.Distance.COSINE,
+        ),
+    )
+    print(f"Collection '{collection_name}' dibuat dengan dimensi: {len(embeddings[0])}")
+
+    # Batch insert
     total = len(chunks)
     for i in range(0, total, batch_size):
         batch_chunks = chunks[i:i + batch_size]
         batch_embeddings = embeddings[i:i + batch_size]
+        
         points = [
-            PointStruct(
+            models.PointStruct(
                 id=str(uuid.uuid4()),
-                vector=embedding.tolist(),
+                vector=embedding.tolist(),  # ← Tambahkan .tolist() untuk keamanan
                 payload={"text": chunk},
             )
             for chunk, embedding in zip(batch_chunks, batch_embeddings)
         ]
+
         client.upsert(collection_name=collection_name, points=points)
-        print(f" Batch {i//batch_size + 1}: simpan {len(points)} chunks")
+        print(f" Batch {i//batch_size + 1}: sukses simpan {len(points)} chunks")
 
     print(f"Sukses simpan {total} chunks ke collection '{collection_name}'")
-    return client
-
-# === DETEKSI REAL-TIME ===
-def is_real_time_query(query, gemini_api_key, model_name="gemini-2.5-flash"):
-    """Gunakan LLM untuk deteksi apakah butuh data real-time."""
-    genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel(model_name)
-    prompt = f"""
-    # PERAN DAN TUJUAN
-    Anda adalah sistem pemroses keputusan yang sangat ketat untuk model RAG. Tugas Anda adalah menganalisis pertanyaan pengguna dan menentukan apakah pertanyaan tersebut **HARUS** dijawab menggunakan data real-time (dinamis) yang diperoleh melalui pemanggilan API eksternal kampus.
-
-    # KATEGORI DATA DINAMIS (Data yang Perlu Pemanggilan API):
-    1.  Status atau Jadwal Pribadi: Informasi yang hanya dimiliki oleh 1 individu (Mahasiswa/Dosen), misal:
-        - Jadwal kuliah per semester/individu.
-        - Nilai, IPK, atau status kelulusan.
-        - Status pembayaran UKT/biaya kuliah.
-        - Informasi akun SIAKAD (selain panduan umum login).
-    2.  Status dan Pengumuman Fleksibel: Data yang sering berubah atau bersifat sementara, misal:
-        - Status atau tanggal pendaftaran jalur PMB terkini (dibuka/ditutup).
-        - Lokasi ujian/ruangan hari ini.
-        - Ketersediaan dosen saat ini (misal: "Apakah Prof. Ali sedang di kampus?").
-        - **Pengumuman resmi kampus (misal: "Pengumuman libur besok").
-    3.  **Data Inventaris: Informasi yang berubah seiring waktu:
-        - Ketersediaan beasiswa yang sedang dibuka.
-        - Jumlah kuota mahasiswa baru tahun ini.
-    
-    # KATEGORI DATA STATIS (Data yang TIDAK Perlu Pemanggilan API):
-    Jawaban untuk pertanyaan-pertanyaan ini sudah seharusnya ada dalam knowledge base RAG Anda (data statis), misal:
-    - Informasi dasar program studi (Akreditasi, Kurikulum, Visi-Misi).
-    - Lokasi gedung (Gedung A, Fakultas Ushuluddin).
-    - Persyaratan umum pendaftaran (Dokumen apa saja yang dibutuhkan).
-    - Sejarah, Rektor, dan struktur organisasi kampus yang tidak berubah cepat.
-    
-    # INSTRUKSI OUTPUT
-    Berdasarkan kategori di atas, tentukan apakah pertanyaan pengguna perlu data dinamis (API call).
-    Jawab HANYA dengan satu kata: "YA" atau "TIDAK".
-
-    Pertanyaan: "{query}"
-    """
-    try:
-        response = model.generate_content(prompt)
-        return "YA" in response.text.strip()
-    except:
-        return False  # fallback aman
-    
-<<<<<<< HEAD
-
-def fetch_kampus_data(query, gemini_api_key, kampus_api_key):
-    """
-    Mengambil data dinamis dari API kampus UIN Salatiga berdasarkan konteks query.      
-    
-    Args:
-        query: Teks pertanyaan asli dari pengguna.
-        gemini_api_key: (Opsional) Digunakan jika nanti integrasi LLM untuk ekstraksi.
-        kampus_api_key: Kunci API untuk otorisasi akses ke sistem kampus.
-        
-    Returns:
-        Dict berisi data JSON dari API, pesan error string, atau None jika tidak relevan.
-    """
-    #  Validasi API key
-    if not kampus_api_key:
-        return {"error": "API kampus belum dikonfigurasi. Hubungi Admin."}
-
-    headers = {
-        "Authorization": f"Bearer {kampus_api_key}",
-        "Content-Type": "application/json"
-    }
-
-    #  Identifikasi kebutuhan data berdasarkan keyword
-    query_lower = query.lower()
-    endpoint_key = None
-
-    if any(kw in query_lower for kw in ["pendaftaran", "pmb", "mahasiswa baru", "daftar"]):
-        endpoint_key = "pendaftaran"
-    elif any(kw in query_lower for kw in ["biaya", "ukt", "uang kuliah", "spp"]):
-        endpoint_key = "biaya_kuliah"
-    elif any(kw in query_lower for kw in ["fakultas", "prodi", "program studi", "jurusan"]):
-        endpoint_key = "fakultas_prodi"
-    elif "akreditasi" in query_lower:
-        endpoint_key = "akreditasi"
-    elif any(kw in query_lower for kw in ["rektor", "wakil rektor", "pimpinan", "dekan"]):
-        endpoint_key = "pimpinan"
-    elif any(kw in query_lower for kw in ["kampus", "lokasi", "alamat", "gedung"]):
-        endpoint_key = "kampus"
-    elif any(kw in query_lower for kw in ["jadwal", "nilai", "krs", "khs", "transkrip", "nim"]):
-        return {
-            "response": (
-                "Data personal seperti jadwal, nilai, atau KRS hanya tersedia melalui "
-                "login resmi di SIAKAD UIN Salatiga. Silakan akses melalui portal mahasiswa."
-            )
-        }
-
-    # 🛑 Jika tidak ada kategori yang cocok → kembalikan None (gunakan data RAG statis)
-    if not endpoint_key or endpoint_key not in ENDPOINT_MAP:
-        return None
-
-    # 📞 Panggil API kampus
-    api_url = ENDPOINT_MAP[endpoint_key]
-    try:
-        response = requests.get(api_url, headers=headers, timeout=10)
-=======
-    # Step 3: Search dengan top_k yang lebih besar untuk filtering
-    results = client.search(
-        collection_name=collection_name,
-        query_vector=query_embedding,
-        limit=top_k * 2,
-        with_vectors =True
-    )
-    
-    # Step 4: Reranking berdasarkan cosine similarity yang lebih akurat
-    if results:
-        # Hitung ulang similarity untuk reranking
-        vektor_qdrant = [hit.vector for hit in results]
-        
-        # Hitung cosine similarity
-        similarities = cosine_similarity([query_embedding], vektor_qdrant)[0]
->>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
-        
-        if response.status_code == 200:
-            return response.json()
-        elif response.status_code == 401:
-            return {"error": "Otorisasi API kampus gagal. Periksa Kunci API."}
-        elif response.status_code == 404:
-            return {"error": f"Endpoint '{endpoint_key}' tidak ditemukan di server kampus."}
-        else:
-            return {"error": f"Gagal mengambil data. Status: {response.status_code}"}
-
-    except requests.exceptions.Timeout:
-        return {"error": "Permintaan ke API kampus timeout. Coba lagi nanti."}
-    except requests.exceptions.ConnectionError:
-        return {"error": "Gagal terhubung ke server API kampus. Periksa jaringan atau URL."}
-    except Exception as e:
-        return {"error": f"Sistem kampus sedang dalam pemeliharaan.: {str(e)}"}
-    
+    return client    
 
 # Fungsi preprocessing query
 def preprocess_query(query):
@@ -370,13 +243,9 @@ def construct_prompt(query, retrieved_chunks, conversation_history=""):
         "Untuk orang tua atau wali Gunakan bahasa yang meyakinkan, sopan, dan mudah dipahami, memberikan rasa aman dan kepercayaan"
         "Sumber Informasi Seluruh jawaban Anda harus didasarkan pada konteks yang diberikan di bawah ini. Jangan pernah menggunakan pengetahuan umum atau informasi lain di luar konteks yang tersedia."
         "Jika jawaban ditemukan, berikan jawaban yang singkat, padat, dan langsung ke inti permasalahan."
-<<<<<<< HEAD
         "Jika jawaban tidak ditemukan di dalam konteks, jawab dengan sopan, dan berikan permohonan maaf untuk informasi lebih lanjut ada di portal uin salatiga untuk informasi lebih lengkap."
-=======
-        "Jika jawaban tidak ditemukan di dalam konteks, jawab dengan sopan, dan berikan infromasi yang anda ketahui secara singkat pertanyaan dari user apalagi obrolan obrolan ringan seperti menanya kan kabar atau apapun yang user lakukan ketika lagi senggang dan ingin di temani dan setelah itu arahkan ke portal uin salatiga untuk informasi lebih lengkap."
->>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
         "Tindakan Tambahan: Jika pertanyaan mengarah pada data spesifik (misalnya, jadwal mata kuliah atau nama dosen) jika jawaban di temukan jawab dengan singkat padat jelas sesuai data yang ada jika tidak ada jawaban sarankan pengguna untuk mengecek aplikasi smart mhs atau SIAKAD UIN SALATIGA."
-        "Jangan menggunakan salam yang ada kaitan nya dengan waktu seperti selamat pagi siang sore malam dan salam hanya sekali saja pada saat user pertama kali bertanya seterusnya mengikuti pertanyaan user dengan relevan."
+        "Janagan memakai salam yang berhubungan waktu seperti selamat pagi siang sore malam dan berikan salam pada saat user pertama kali bertanya selebih nya jawab pertanyaan dengan jawaban yang relevan."
         "Anda diharapkan memiliki pemahaman mendalam tentang terminologi akademis, keuangan, dan kemahasiswaan yang berlaku di UIN Salatiga."
         "setiap anda menjawab pertanyaan jawablah dengan simple dan singkat jangan terlalu panjang. teks nya langsung kepada inti nya dan ini berlaku pada setiap pertanyaan user yang ada "
         "ketika user menanyakan pertanyaan ringan atau mengobrol ngobrol curhatan mereka maka anda dapat menjawab dengan sesuai dengan pertanyaan user dengan bahasa gen z yang singkat dan padat dan langsung Call To action untuk menanyakan seputar Uin salatiga dengan ramah dan sopan ya."
@@ -398,12 +267,7 @@ Jawablah dengan gaya seorang CS dan gunakan pengetahuan tambahan dari internet j
 
 
 
-<<<<<<< HEAD
 def ask_gemini(system_prompt, user_prompt, api_key, model_name="gemini-2.5-flash"):
-=======
-
-def ask_gemini(system_prompt, user_prompt, api_key, model_name="gemini-1.5-flash-latest"):
->>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
     print(f"\n[8] Mengirim prompt ke {model_name} (via Google AI Studio)...")
     
     # Konfigurasi API key
@@ -422,15 +286,10 @@ def ask_gemini(system_prompt, user_prompt, api_key, model_name="gemini-1.5-flash
         return response.text
     except Exception as e:
         print(f"Error saat menghubungi Gemini: {e}")
-<<<<<<< HEAD
         return "Maaf, terjadi kesalahan internal mohon tunggu beberapa saat lagi."
-=======
-        return "Maaf, terjadi kesalahan saat menghubungi LLM."
->>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
 
 # MAIN PIPELINE
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
     # --- konfigurasi ---
     PDF_FILE = "sejarah_uin.pdf"
 
@@ -457,23 +316,7 @@ if __name__ == '__main__':
     COLLECTION_NAME = os.getenv("COLLECTION_NAME")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL")
-<<<<<<< HEAD
     # === PETA ENDPOINT API KAMPUS (GANTI SESUAI DOKUMENTASI RESMI) ===
-
-    KAMPUS_API_BASE = os.getenv("KAMPUS_API_BASE")  # Ganti sesuai dokumentasi
-    KAMPUS_API_KEY = os.getenv("KAMPUS_API_KEY")  # Simpan di .env!
-    ENDPOINT_MAP = {
-    "pendaftaran": f"{KAMPUS_API_BASE}/pendaftaran/status",
-    "biaya_kuliah": f"{KAMPUS_API_BASE}/keuangan/biaya-ukt",
-    "fakultas_prodi": f"{KAMPUS_API_BASE}/akademik/fakultas-prodi",
-    "akreditasi": f"{KAMPUS_API_BASE}/akademik/akreditasi",
-    "pimpinan": f"{KAMPUS_API_BASE}/organisasi/pimpinan",
-    "kampus": f"{KAMPUS_API_KEY}/lokasi/kampus"
-}
-=======
->>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
-    
-    
 
     # --- ekstraksi dan gabungkan PDF + Web ---
     print("\n[1.2] Menggabungkan teks dari PDF dan Web...")
