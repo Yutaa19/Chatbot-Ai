@@ -137,8 +137,8 @@ except NotFoundError:
         client.upsert(collection_name=collection_name, points=points)
         print(f" Batch {i//batch_size + 1}: sukses simpan {len(points)} chunks")
 
-    print(f"Sukses simpan {total} chunks ke collection '{collection_name}'")
-    return client    
+        print(f"Sukses simpan {total} chunks ke collection '{collection_name}'")
+        return client    
 
 # Fungsi preprocessing query
 def preprocess_query(query):
