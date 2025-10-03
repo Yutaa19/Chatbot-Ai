@@ -2,9 +2,14 @@ import uuid
 import re
 from pathlib import Path
 from llama_index.readers.file import PDFReader
+from llama_index.readers.web import TrafilaturaWebReader
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
+<<<<<<< HEAD
 from qdrant_client.http import models
+=======
+from qdrant_client.models import VectorParams, Distance, PointStruct
+>>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
 import google.generativeai as genai
 import requests
 import json
@@ -38,19 +43,17 @@ def extract_text_from_pdf_llamaindex(pdf_path):
 
 # 1.1 Ekstraksi dari Web
 def extract_text_from_web_async(urls):
-    from llama_index.readers.web import TrafilaturaWebReader
-    """
-    Mengekstrak teks dari daftar URL secara async menggunakan TrafilaturaWebReader.
-    """
-    print(f"\n[1.1] Ekstraksi dari {len(urls)} URL (async)...")
-    
     reader = TrafilaturaWebReader()
-    documents = reader.load_data(urls=urls)  # Mendukung async secara internal
-    
-    full_text = "\n".join([doc.text for doc in documents])
-    
-    print("Ekstraksi web selesai.")
-    return full_text
+    all_texts = []
+    for url in urls:
+        clean_url = url.strip()
+        if not clean_url:
+            continue
+        docs = reader.load_data(urls=[clean_url])
+        text = "\n".join([doc.text for doc in docs])
+        # Tambahkan penanda sumber
+        all_texts.append(f"=== SUMBER: {clean_url} ===\n{text}")
+    return "\n\n".join(all_texts)
 
 def clean_text(raw_text):
     print("\n[2] Cleansing text...")
@@ -85,48 +88,36 @@ def get_embedder(model_name="firqaaa/indo-sentence-bert-base"):
     return SentenceTransformer(model_name)
 
 # 5. Store ke Qdrant
-from qdrant_client.http import models
-
 def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, batch_size=50):
     print("\n[5] Menyimpan embedding ke Qdrant...")
-    client = QdrantClient(
-        url=qdrant_url,
-        api_key=api_key,
-        timeout=30
-    )
 
-    # Hapus koleksi lama jika ada (HANYA UNTUK DEVELOPMENT!)
-    if client.collection_exists(collection_name=collection_name):
-        print(f"Menghapus koleksi lama: {collection_name}")
-        client.delete_collection(collection_name=collection_name)
+    client = QdrantClient(url=qdrant_url, api_key=api_key, timeout=30)
 
-    # Buat koleksi baru dengan dimensi sesuai
-    client.create_collection(
+    # === RECREATE COLLECTION (HAPUS + BUAT BARU DALAM 1 LANGKAH) ===
+    client.recreate_collection(
         collection_name=collection_name,
-        vectors_config=models.VectorParams(
-            size=len(embeddings[0]),  # ← Dinamis, sesuai model saat ini
-            distance=models.Distance.COSINE,
-        ),
+        vectors_config=VectorParams(
+            size=len(embeddings[0]),
+            distance=Distance.COSINE
+        )
     )
-    print(f"Collection '{collection_name}' dibuat dengan dimensi: {len(embeddings[0])}")
+    print(f"Collection '{collection_name}' berhasil dibuat/diganti dengan dimensi: {len(embeddings[0])}")
 
-    # Batch insert
+    # === SIMPAN DATA ===
     total = len(chunks)
     for i in range(0, total, batch_size):
         batch_chunks = chunks[i:i + batch_size]
         batch_embeddings = embeddings[i:i + batch_size]
-        
         points = [
-            models.PointStruct(
+            PointStruct(
                 id=str(uuid.uuid4()),
-                vector=embedding.tolist(),  # ← Tambahkan .tolist() untuk keamanan
+                vector=embedding.tolist(),
                 payload={"text": chunk},
             )
             for chunk, embedding in zip(batch_chunks, batch_embeddings)
         ]
-
         client.upsert(collection_name=collection_name, points=points)
-        print(f" Batch {i//batch_size + 1}: sukses simpan {len(points)} chunks")
+        print(f" Batch {i//batch_size + 1}: simpan {len(points)} chunks")
 
     print(f"Sukses simpan {total} chunks ke collection '{collection_name}'")
     return client
@@ -174,6 +165,7 @@ def is_real_time_query(query, gemini_api_key, model_name="gemini-2.5-flash"):
     except:
         return False  # fallback aman
     
+<<<<<<< HEAD
 
 def fetch_kampus_data(query, gemini_api_key, kampus_api_key):
     """
@@ -228,6 +220,23 @@ def fetch_kampus_data(query, gemini_api_key, kampus_api_key):
     api_url = ENDPOINT_MAP[endpoint_key]
     try:
         response = requests.get(api_url, headers=headers, timeout=10)
+=======
+    # Step 3: Search dengan top_k yang lebih besar untuk filtering
+    results = client.search(
+        collection_name=collection_name,
+        query_vector=query_embedding,
+        limit=top_k * 2,
+        with_vectors =True
+    )
+    
+    # Step 4: Reranking berdasarkan cosine similarity yang lebih akurat
+    if results:
+        # Hitung ulang similarity untuk reranking
+        vektor_qdrant = [hit.vector for hit in results]
+        
+        # Hitung cosine similarity
+        similarities = cosine_similarity([query_embedding], vektor_qdrant)[0]
+>>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
         
         if response.status_code == 200:
             return response.json()
@@ -361,7 +370,11 @@ def construct_prompt(query, retrieved_chunks, conversation_history=""):
         "Untuk orang tua atau wali Gunakan bahasa yang meyakinkan, sopan, dan mudah dipahami, memberikan rasa aman dan kepercayaan"
         "Sumber Informasi Seluruh jawaban Anda harus didasarkan pada konteks yang diberikan di bawah ini. Jangan pernah menggunakan pengetahuan umum atau informasi lain di luar konteks yang tersedia."
         "Jika jawaban ditemukan, berikan jawaban yang singkat, padat, dan langsung ke inti permasalahan."
+<<<<<<< HEAD
         "Jika jawaban tidak ditemukan di dalam konteks, jawab dengan sopan, dan berikan permohonan maaf untuk informasi lebih lanjut ada di portal uin salatiga untuk informasi lebih lengkap."
+=======
+        "Jika jawaban tidak ditemukan di dalam konteks, jawab dengan sopan, dan berikan infromasi yang anda ketahui secara singkat pertanyaan dari user apalagi obrolan obrolan ringan seperti menanya kan kabar atau apapun yang user lakukan ketika lagi senggang dan ingin di temani dan setelah itu arahkan ke portal uin salatiga untuk informasi lebih lengkap."
+>>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
         "Tindakan Tambahan: Jika pertanyaan mengarah pada data spesifik (misalnya, jadwal mata kuliah atau nama dosen) jika jawaban di temukan jawab dengan singkat padat jelas sesuai data yang ada jika tidak ada jawaban sarankan pengguna untuk mengecek aplikasi smart mhs atau SIAKAD UIN SALATIGA."
         "Jangan menggunakan salam yang ada kaitan nya dengan waktu seperti selamat pagi siang sore malam dan salam hanya sekali saja pada saat user pertama kali bertanya seterusnya mengikuti pertanyaan user dengan relevan."
         "Anda diharapkan memiliki pemahaman mendalam tentang terminologi akademis, keuangan, dan kemahasiswaan yang berlaku di UIN Salatiga."
@@ -385,7 +398,12 @@ Jawablah dengan gaya seorang CS dan gunakan pengetahuan tambahan dari internet j
 
 
 
+<<<<<<< HEAD
 def ask_gemini(system_prompt, user_prompt, api_key, model_name="gemini-2.5-flash"):
+=======
+
+def ask_gemini(system_prompt, user_prompt, api_key, model_name="gemini-1.5-flash-latest"):
+>>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
     print(f"\n[8] Mengirim prompt ke {model_name} (via Google AI Studio)...")
     
     # Konfigurasi API key
@@ -404,10 +422,15 @@ def ask_gemini(system_prompt, user_prompt, api_key, model_name="gemini-2.5-flash
         return response.text
     except Exception as e:
         print(f"Error saat menghubungi Gemini: {e}")
+<<<<<<< HEAD
         return "Maaf, terjadi kesalahan internal mohon tunggu beberapa saat lagi."
+=======
+        return "Maaf, terjadi kesalahan saat menghubungi LLM."
+>>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
 
 # MAIN PIPELINE
-if __name__ == "__main__":
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
     # --- konfigurasi ---
     PDF_FILE = "sejarah_uin.pdf"
 
@@ -434,6 +457,7 @@ if __name__ == "__main__":
     COLLECTION_NAME = os.getenv("COLLECTION_NAME")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL")
+<<<<<<< HEAD
     # === PETA ENDPOINT API KAMPUS (GANTI SESUAI DOKUMENTASI RESMI) ===
 
     KAMPUS_API_BASE = os.getenv("KAMPUS_API_BASE")  # Ganti sesuai dokumentasi
@@ -446,6 +470,8 @@ if __name__ == "__main__":
     "pimpinan": f"{KAMPUS_API_BASE}/organisasi/pimpinan",
     "kampus": f"{KAMPUS_API_KEY}/lokasi/kampus"
 }
+=======
+>>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
     
     
 
