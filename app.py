@@ -51,13 +51,8 @@ urls_list = [
 ]
 QDRANT_URL = os.getenv('QDRANT_URL')
 QDRANT_API_KEY = os.getenv('QDRANT_API_KEY')
-<<<<<<< HEAD
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL")
-COLLECTION_NAME = os.getenv('COLLECTION_NAME', "my_pdf_collection")
-=======
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-GEMINI_MODEL = os.getenv('GEMINI_MODEL')
 COLLECTION_NAME = os.getenv('COLLECTION_NAME')
 
 
