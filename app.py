@@ -1,5 +1,8 @@
 import os
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
+import redis
+import json
+import time
 from dotenv import load_dotenv
 import uuid  # Pastikan diimpor jika belum
 
@@ -16,11 +19,17 @@ from Main import (
     store_to_qdrant,
     search_qdrant,
     construct_prompt,
-    ask_openrouter
+    ask_gemini
 )
 
 
 app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY')
+
+# Koneksi Redis
+REDIS_URL = os.getenv('REDIS_URL')
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+print(f"Connected to Redis at {REDIS_URL}")
 
 # Initialize global variables
 PDF_FILE = "sejarah_uin.pdf"
@@ -40,15 +49,28 @@ urls_list = [
     "https://www.uinsalatiga.ac.id/tenaga-pendidik/",
     "https://www.uinsalatiga.ac.id/tenaga-kependidikan/",
 ]
-QDRANT_URL = os.getenv('QDRANT_URL', "https://fef232a5-ad33-47e2-b0ce-a374a9a13f15.europe-west3-0.gcp.cloud.qdrant.io:6333")
-QDRANT_API_KEY = os.getenv('QDRANT_API_KEY', "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.SMKtT2_FbPb5DE1GlDP7Q9xC6MA0w77rWZrZHbxEK4s")
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', "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")
-OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', "x-ai/grok-4-fast:free")
+QDRANT_URL = os.getenv('QDRANT_URL')
+QDRANT_API_KEY = os.getenv('QDRANT_API_KEY')
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL")
 COLLECTION_NAME = os.getenv('COLLECTION_NAME', "my_pdf_collection")
 
 # --- Inisialisasi Global ---
 client = None
 embedder = None
+
+# === FUNGSI REDIS ===
+def get_history(user_id, limit=5):
+    key = f"chat:{user_id}"
+    raw = redis_client.lrange(key, 0, limit - 1)
+    return [json.loads(item) for item in raw]
+
+def save_history(user_id, user_msg, bot_msg):
+    key = f"chat:{user_id}"
+    item = json.dumps({'user': user_msg, 'ai': bot_msg, 'ts': time.time()})
+    redis_client.lpush(key, item)
+    redis_client.ltrim(key, 0, 9)  # Simpan max 10 percakapan
+    redis_client.expire(key, 1800)  # Hapus setelah 30 menit
 
 # Initialize RAG system components
 print("Initializing RAG system...")
@@ -60,7 +82,7 @@ print(f"[DEBUG] Panjang teks Web: {len(web_text)} karakter")
     
     # Gabungkan jika web_text tidak kosong
 if not web_text.strip():
-        print("⚠️  Peringatan: Hasil ekstraksi web kosong. Hanya menggunakan PDF.")
+        print("Peringatan: Hasil ekstraksi web kosong. Hanya menggunakan PDF.")
         combined_text = pdf_text
 else:
         combined_text = pdf_text + "\n\n=== TEKS DARI WEB ===\n\n" + web_text
@@ -97,6 +119,17 @@ def ask():
 
         print(f"\n[USER QUERY]: {user_query}")
 
+        # === 1. Dapatkan atau buat user_id ===
+        if 'user_id' not in session:
+            session['user_id'] = str(uuid.uuid4())
+        user_id = session['user_id']
+
+        # === 2. Ambil riwayat percakapan dari Redis ===
+        conversation_history = get_history(user_id, limit=5)
+        history_text = ""
+        for turn in conversation_history:
+            history_text += f"User: {turn['user']}\nAI: {turn['ai']}\n\n"
+
         # 6. Similarity Search — Cari chunk relevan dari Qdrant
         retrieved = search_qdrant(
             query=user_query,
@@ -113,15 +146,23 @@ def ask():
             print(f"[{i}] {preview}")
 
         # 7. Construct Prompt — Siapkan prompt untuk LLM
-        system_prompt, user_prompt = construct_prompt(user_query, retrieved)
+       # === Construct Prompt — SERTAKAN RIWAYAT! ===
+        system_prompt, user_prompt = construct_prompt(
+        query=user_query,
+        retrieved_chunks=retrieved,
+        conversation_history=history_text.strip()  # Kirim riwayat ke Main.py
+)
 
         # 8. Tanya LLM via OpenRouter
-        answer = ask_openrouter(
+        answer = ask_gemini(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            api_key=OPENROUTER_API_KEY,
-            model_name=OPENROUTER_MODEL
+            api_key=GEMINI_API_KEY,
+            model_name=GEMINI_MODEL
         )
+
+        # === 6. Simpan ke Redis ===
+        save_history(user_id, user_query, answer)
 
         # Kembalikan jawaban + konteks (untuk debugging/frontend)
         return jsonify({
@@ -131,13 +172,13 @@ def ask():
 
     except Exception as e:
         # Log error untuk debugging
-        print(f"❌ Error saat memproses permintaan: {str(e)}")
+        print(f"Error saat memproses permintaan: {str(e)}")
         import traceback
         traceback.print_exc()
 
         # Beri respons user-friendly
         return jsonify({
-            'error': 'Maaf, terjadi kesalahan internal. Tim kami sedang memperbaikinya.'
+            'error': 'Maaf, terjadi pemeliharaan chatbot. Tim kami sedang memperbaikinya.'
         }), 500
 
 
