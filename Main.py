@@ -4,7 +4,7 @@ from pathlib import Path
 from llama_index.readers.file import PDFReader
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import NotFoundError
+from qdrant_client.models import VectorParams, Distance, PointStruct
 from qdrant_client.http import models
 import google.generativeai as genai
 import requests
@@ -87,58 +87,37 @@ from qdrant_client.http import models
 
 def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, batch_size=50):
     print("\n[5] Menyimpan embedding ke Qdrant...")
-    client = QdrantClient(
-        url=qdrant_url,
-        api_key=api_key,
-        timeout=30
-    )
 
-    # Hapus koleksi lama jika ada (HANYA UNTUK DEVELOPMENT!)
+    client = QdrantClient(url=qdrant_url, api_key=api_key, timeout=30)
 
-# Hapus koleksi lama jika ada (HANYA UNTUK DEVELOPMENT!)
-try:
-    # Coba ambil informasi koleksi. Jika berhasil, artinya koleksi ada.
-    client.get_collection(collection_name=collection_name)
-
-    # Jika sampai di sini, koleksi DITEMUKAN, maka hapus.
-    print(f"Menghapus koleksi lama: {collection_name}")
-    client.delete_collection(collection_name=collection_name)
-
-except NotFoundError:
-    # Jika sampai di sini, koleksi TIDAK DITEMUKAN, maka tidak perlu menghapus.
-    print(f"Koleksi '{collection_name}' tidak ditemukan. Lanjut.")
-
-
-    # Buat koleksi baru dengan dimensi sesuai
-    client.create_collection(
+    # === RECREATE COLLECTION (HAPUS + BUAT BARU DALAM 1 LANGKAH) ===
+    client.recreate_collection(
         collection_name=collection_name,
-        vectors_config=models.VectorParams(
-            size=len(embeddings[0]),  # ← Dinamis, sesuai model saat ini
-            distance=models.Distance.COSINE,
-        ),
+        vectors_config=VectorParams(
+            size=len(embeddings[0]),
+            distance=Distance.COSINE
+        )
     )
-    print(f"Collection '{collection_name}' dibuat dengan dimensi: {len(embeddings[0])}")
+    print(f"Collection '{collection_name}' berhasil dibuat/diganti dengan dimensi: {len(embeddings[0])}")
 
-    # Batch insert
+    # === SIMPAN DATA ===
     total = len(chunks)
     for i in range(0, total, batch_size):
         batch_chunks = chunks[i:i + batch_size]
         batch_embeddings = embeddings[i:i + batch_size]
-        
         points = [
-            models.PointStruct(
+            PointStruct(
                 id=str(uuid.uuid4()),
-                vector=embedding.tolist(),  # ← Tambahkan .tolist() untuk keamanan
+                vector=embedding.tolist(),
                 payload={"text": chunk},
             )
             for chunk, embedding in zip(batch_chunks, batch_embeddings)
         ]
-
         client.upsert(collection_name=collection_name, points=points)
-        print(f" Batch {i//batch_size + 1}: sukses simpan {len(points)} chunks")
+        print(f" Batch {i//batch_size + 1}: simpan {len(points)} chunks")
 
-        print(f"Sukses simpan {total} chunks ke collection '{collection_name}'")
-        return client    
+    print(f"Sukses simpan {total} chunks ke collection '{collection_name}'")
+    return client 
 
 # Fungsi preprocessing query
 def preprocess_query(query):
