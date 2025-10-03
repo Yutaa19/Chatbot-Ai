@@ -59,7 +59,7 @@ COLLECTION_NAME = os.getenv('COLLECTION_NAME', "my_pdf_collection")
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('GEMINI_MODEL')
 COLLECTION_NAME = os.getenv('COLLECTION_NAME')
->>>>>>> 8e932c5b4b3795d5b53d45a5c8ff763d3a6d239d
+
 
 # --- Inisialisasi Global ---
 client = None
