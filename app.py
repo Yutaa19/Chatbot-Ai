@@ -53,7 +53,12 @@ QDRANT_URL = os.getenv('QDRANT_URL')
 QDRANT_API_KEY = os.getenv('QDRANT_API_KEY')
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL")
+<<<<<<< HEAD
 COLLECTION_NAME = os.getenv('COLLECTION_NAME', "my_pdf_collection")
+=======
+COLLECTION_NAME = os.getenv('COLLECTION_NAME')
+
+>>>>>>> 6d9a2e39b45501860ccec77f6c2904eb9147f170
 
 # --- Inisialisasi Global ---
 client = None

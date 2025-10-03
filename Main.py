@@ -4,6 +4,7 @@ from pathlib import Path
 from llama_index.readers.file import PDFReader
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import NotFoundError
 from qdrant_client.http import models
 import google.generativeai as genai
 import requests
@@ -93,9 +94,20 @@ def store_to_qdrant(chunks, embeddings, qdrant_url, api_key, collection_name, ba
     )
 
     # Hapus koleksi lama jika ada (HANYA UNTUK DEVELOPMENT!)
-    if client.collection_exists(collection_name=collection_name):
-        print(f"Menghapus koleksi lama: {collection_name}")
-        client.delete_collection(collection_name=collection_name)
+
+# Hapus koleksi lama jika ada (HANYA UNTUK DEVELOPMENT!)
+try:
+    # Coba ambil informasi koleksi. Jika berhasil, artinya koleksi ada.
+    client.get_collection(collection_name=collection_name)
+
+    # Jika sampai di sini, koleksi DITEMUKAN, maka hapus.
+    print(f"Menghapus koleksi lama: {collection_name}")
+    client.delete_collection(collection_name=collection_name)
+
+except NotFoundError:
+    # Jika sampai di sini, koleksi TIDAK DITEMUKAN, maka tidak perlu menghapus.
+    print(f"Koleksi '{collection_name}' tidak ditemukan. Lanjut.")
+
 
     # Buat koleksi baru dengan dimensi sesuai
     client.create_collection(
